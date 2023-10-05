@@ -23,6 +23,8 @@ from oslo_log import log
 
 from watcher._i18n import _
 from watcher.common import exception
+from watcher.common.metal_client import constants as metal_constants
+from watcher.common.metal_client import factory as metal_client_factory
 from watcher.decision_engine.strategy.strategies import base
 
 LOG = log.getLogger(__name__)
@@ -81,7 +83,7 @@ class SavingEnergy(base.SavingEnergyBaseStrategy):
     def __init__(self, config, osc=None):
 
         super(SavingEnergy, self).__init__(config, osc)
-        self._ironic_client = None
+        self._metal_client = None
         self._nova_client = None
 
         self.with_vms_node_pool = []
@@ -91,10 +93,10 @@ class SavingEnergy(base.SavingEnergyBaseStrategy):
         self.min_free_hosts_num = 1
 
     @property
-    def ironic_client(self):
-        if not self._ironic_client:
-            self._ironic_client = self.osc.ironic()
-        return self._ironic_client
+    def metal_client(self):
+        if not self._metal_client:
+            self._metal_client = metal_client_factory.get_client(self.osc)
+        return self._metal_client
 
     @property
     def nova_client(self):
@@ -149,10 +151,10 @@ class SavingEnergy(base.SavingEnergyBaseStrategy):
         :return: None
         """
         params = {'state': state,
-                  'resource_name': node.hostname}
+                  'resource_name': node.get_hypervisor_hostname()}
         self.solution.add_action(
             action_type='change_node_power_state',
-            resource_id=node.uuid,
+            resource_id=node.get_id(),
             input_parameters=params)
 
     def get_hosts_pool(self):
@@ -162,20 +164,10 @@ class SavingEnergy(base.SavingEnergyBaseStrategy):
 
         """
 
-        node_list = self.ironic_client.node.list()
+        node_list = self.metal_client.list_compute_nodes()
         for node in node_list:
-            node_info = self.ironic_client.node.get(node.uuid)
-            hypervisor_id = node_info.extra.get('compute_node_id', None)
-            if hypervisor_id is None:
-                LOG.warning(('Cannot find compute_node_id in extra '
-                             'of ironic node %s'), node.uuid)
-                continue
-            hypervisor_node = self.nova_client.hypervisors.get(hypervisor_id)
-            if hypervisor_node is None:
-                LOG.warning(('Cannot find hypervisor %s'), hypervisor_id)
-                continue
-            node.hostname = hypervisor_node.hypervisor_hostname
-            hypervisor_node = hypervisor_node.to_dict()
+            hypervisor_node = node.get_hypervisor_node().to_dict()
+
             compute_service = hypervisor_node.get('service', None)
             host_name = compute_service.get('host')
             try:
@@ -184,14 +176,16 @@ class SavingEnergy(base.SavingEnergyBaseStrategy):
                 continue
 
             if not (hypervisor_node.get('state') == 'up'):
-                """filter nodes that are not in 'up' state"""
+                # filter nodes that are not in 'up' state
                 continue
             else:
                 if (hypervisor_node['running_vms'] == 0):
-                    if (node_info.power_state == 'power on'):
+                    power_state = node.get_power_state()
+                    if power_state == metal_constants.PowerState.ON:
                         self.free_poweron_node_pool.append(node)
-                    elif (node_info.power_state == 'power off'):
+                    elif power_state == metal_constants.PowerState.OFF:
                         self.free_poweroff_node_pool.append(node)
+                    # TODO: log a message in case of unknown states
                 else:
                     self.with_vms_node_pool.append(node)
 
@@ -205,14 +199,16 @@ class SavingEnergy(base.SavingEnergyBaseStrategy):
         if len_poweron > need_poweron:
             for node in random.sample(self.free_poweron_node_pool,
                                       (len_poweron - need_poweron)):
-                self.add_action_poweronoff_node(node, 'off')
-                LOG.info("power off %s", node.uuid)
+                self.add_action_poweronoff_node(node,
+                                                metal_constants.PowerState.OFF)
+                LOG.info("power off %s", node.get_id())
         elif len_poweron < need_poweron:
             diff = need_poweron - len_poweron
             for node in random.sample(self.free_poweroff_node_pool,
                                       min(len_poweroff, diff)):
-                self.add_action_poweronoff_node(node, 'on')
-                LOG.info("power on %s", node.uuid)
+                self.add_action_poweronoff_node(node,
+                                                metal_constants.PowerState.ON)
+                LOG.info("power on %s", node.get_id())
 
     def pre_execute(self):
         self._pre_execute()

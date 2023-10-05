@@ -17,17 +17,13 @@
 # limitations under the License.
 #
 
-import enum
 import time
 
 from watcher._i18n import _
+from watcher.common.metal_client import constants as metal_constants
+from watcher.common.metal_client import factory as metal_client_factory
 from watcher.applier.actions import base
 from watcher.common import exception
-
-
-class NodeState(enum.Enum):
-    POWERON = 'on'
-    POWEROFF = 'off'
 
 
 class ChangeNodePowerState(base.BaseAction):
@@ -43,8 +39,8 @@ class ChangeNodePowerState(base.BaseAction):
          'state': str,
         })
 
-    The `resource_id` references a ironic node id (list of available
-    ironic node is returned by this command: ``ironic node-list``).
+    The `resource_id` references a baremetal node id (list of available
+    ironic nodes is returned by this command: ``ironic node-list``).
     The `state` value should either be `on` or `off`.
     """
 
@@ -61,8 +57,8 @@ class ChangeNodePowerState(base.BaseAction):
                 },
                 'state': {
                     'type': 'string',
-                    'enum': [NodeState.POWERON.value,
-                             NodeState.POWEROFF.value]
+                    'enum': [metal_constants.PowerState.ON.value,
+                             metal_constants.PowerState.OFF.value]
                 }
             },
             'required': ['resource_id', 'state'],
@@ -82,10 +78,10 @@ class ChangeNodePowerState(base.BaseAction):
         return self._node_manage_power(target_state)
 
     def revert(self):
-        if self.state == NodeState.POWERON.value:
-            target_state = NodeState.POWEROFF.value
-        elif self.state == NodeState.POWEROFF.value:
-            target_state = NodeState.POWERON.value
+        if self.state == metal_constants.PowerState.ON.value:
+            target_state = metal_constants.PowerState.OFF.value
+        elif self.state == metal_constants.PowerState.OFF.value:
+            target_state = metal_constants.PowerState.ON.value
         return self._node_manage_power(target_state)
 
     def _node_manage_power(self, state, retry=60):
@@ -93,30 +89,27 @@ class ChangeNodePowerState(base.BaseAction):
             raise exception.IllegalArgumentException(
                 message=_("The target state is not defined"))
 
-        ironic_client = self.osc.ironic()
-        nova_client = self.osc.nova()
-        current_state = ironic_client.node.get(self.node_uuid).power_state
-        # power state: 'power on' or 'power off', if current node state
-        # is the same as state, just return True
-        if state in current_state:
+        metal_client = metal_client_factory.get_client(self.osc)
+        node = metal_client.get_node(self.node_uuid)
+        current_state = node.get_power_state()
+
+        if state == current_state.value:
             return True
 
-        if state == NodeState.POWEROFF.value:
-            node_info = ironic_client.node.get(self.node_uuid).to_dict()
-            compute_node_id = node_info['extra']['compute_node_id']
-            compute_node = nova_client.hypervisors.get(compute_node_id)
-            compute_node = compute_node.to_dict()
+        if state == metal_constants.PowerState.OFF.value:
+            compute_node = node.get_hypervisor_node().to_dict()
             if (compute_node['running_vms'] == 0):
-                ironic_client.node.set_power_state(
-                    self.node_uuid, state)
+                node.set_power_state(state)
+                # TODO: we should log a message, saying that the node is not
+                # going to be powered off since there are runnign vms.
         else:
-            ironic_client.node.set_power_state(self.node_uuid, state)
+            node.set_power_state(state)
 
-        ironic_node = ironic_client.node.get(self.node_uuid)
-        while ironic_node.power_state == current_state and retry:
+        node = metal_client.get_node(self.node_uuid)
+        while node.get_power_state() == current_state and retry:
             time.sleep(10)
             retry -= 1
-            ironic_node = ironic_client.node.get(self.node_uuid)
+            node = metal_client.get_node(self.node_uuid)
         if retry > 0:
             return True
         else:
@@ -130,4 +123,4 @@ class ChangeNodePowerState(base.BaseAction):
 
     def get_description(self):
         """Description of the action"""
-        return ("Compute node power on/off through ironic.")
+        return ("Compute node power on/off through Ironic or MaaS.")
