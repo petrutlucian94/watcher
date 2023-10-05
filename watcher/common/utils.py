@@ -16,12 +16,14 @@
 
 """Utilities and helper functions."""
 
+import asyncio
 import datetime
 import random
 import re
 import string
 
 from croniter import croniter
+from eventlet import tpool
 
 from jsonschema import validators
 from oslo_config import cfg
@@ -162,3 +164,19 @@ Draft4Validator = validators.Draft4Validator
 def random_string(n):
     return ''.join([random.choice(
         string.ascii_letters + string.digits) for i in range(n)])
+
+
+# Some clients (e.g. MAAS) use asyncio, which isn't compatible with Eventlet.
+# As a workaround, we're delegating such calls to a native thread.
+def async_compat_call(f, *args, **kwargs):
+    def wrapper():
+        try:
+            # Ensure that this thread has an asyncio event loop.
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return f(*args, **kwargs)
+
+    return tpool.execute(wrapper)

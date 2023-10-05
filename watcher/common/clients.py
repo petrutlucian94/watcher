@@ -19,12 +19,14 @@ from ironicclient import client as irclient
 from keystoneauth1 import adapter as ka_adapter
 from keystoneauth1 import loading as ka_loading
 from keystoneclient import client as keyclient
+from maas import client as maas_client
 from monascaclient import client as monclient
 from neutronclient.neutron import client as netclient
 from novaclient import api_versions as nova_api_versions
 from novaclient import client as nvclient
 
 from watcher.common import exception
+from watcher.common import utils
 
 try:
     from ceilometerclient import client as ceclient
@@ -74,6 +76,7 @@ class OpenStackClients(object):
         self._monasca = None
         self._neutron = None
         self._ironic = None
+        self._maas = None
         self._placement = None
 
     def _get_keystone_session(self):
@@ -264,6 +267,17 @@ class OpenStackClients(object):
                                            region_name=ironic_region_name,
                                            session=self.session)
         return self._ironic
+
+    def maas(self):
+        if self._maas:
+            return self._maas
+
+        url = self._get_client_option('maas', 'url')
+        api_key = self._get_client_option('maas', 'api_key')
+        self._maas = utils.async_compat_call(
+            maas_client.connect,
+            url, apikey=api_key)
+        return self._maas
 
     @exception.wrap_keystone_exception
     def placement(self):
