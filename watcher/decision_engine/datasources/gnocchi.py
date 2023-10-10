@@ -93,6 +93,26 @@ class GnocchiHelper(base.DataSourceBase):
 
             resource_id = resources[0]['id']
 
+        if meter_name == "instance_cpu_usage":
+            if resource_type != "instance":
+                LOG.warning("Unsupported resource type for metric "
+                            "'instance_cpu_usage': ", resource_type)
+                return
+
+            # The "cpu_util" gauge (percentage) metric has been removed.
+            # We're going to obtain the same result by using the rate of change
+            # aggregate operation.
+            if aggregate not in ("mean", "rate:mean"):
+                LOG.warning("Unsupported aggregate for instance_cpu_usage "
+                            "metric: %s. "
+                            "Supported aggregates: mean, rate:mean ",
+                            aggregate)
+                return
+
+            # TODO: consider supporting other aggregates.
+            aggregate = "rate:mean"
+            meter = "cpu"
+
         raw_kwargs = dict(
             metric=meter,
             start=start_time,
@@ -117,6 +137,14 @@ class GnocchiHelper(base.DataSourceBase):
                 # Airflow from hardware.ipmi.node.airflow is reported as
                 # 1/10 th of actual CFM
                 return_value *= 10
+            if meter_name == "instance_cpu_usage":
+                # We're converting the cumulative cpu time (ns) to cpu usage
+                # percentage.
+                vcpus = resource.vcpus
+                if not vcpus:
+                    LOG.warning("instance vcpu count not set, assuming 1")
+                    vcpus = 1
+                return_value *= 100 / (granularity * 1000000000)
 
         return return_value
 
