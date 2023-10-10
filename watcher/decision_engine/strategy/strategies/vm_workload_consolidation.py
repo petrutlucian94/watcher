@@ -416,6 +416,9 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
                 for a in actions:
                     self.solution.actions.remove(a)
                     self.number_of_migrations -= 1
+                LOG.info("Optimized migrations: %s. "
+                         "Source: %s, destination: %s", actions,
+                         src_name, dst_name)
                 src_node = self.compute_model.get_node_by_name(src_name)
                 dst_node = self.compute_model.get_node_by_name(dst_name)
                 instance = self.compute_model.get_instance_by_uuid(
@@ -452,6 +455,8 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
                         key=lambda x: self.get_instance_utilization(
                             x)['cpu']
                 ):
+                    LOG.info("Node %s overloaded, attempting to reduce load.",
+                             node)
                     # skip exclude instance when migrating
                     if instance.watcher_exclude:
                         LOG.debug("Instance is excluded by scope, "
@@ -460,11 +465,19 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
                     for destination_node in reversed(sorted_nodes):
                         if self.instance_fits(
                                 instance, destination_node, cc):
+                            LOG.info("Offload: found fitting "
+                                     "destination (%s) for instance: %s. "
+                                     "Planning migration.",
+                                     destination_node, instance.uuid)
                             self.add_migration(instance, node,
                                                destination_node)
                             break
                     if not self.is_overloaded(node, cc):
+                        LOG.info("Node %s no longer overloaded.", node)
                         break
+                    else:
+                        LOG.info("Node still overloaded (%s), "
+                                 "continuing offload phase.", node)
 
     def consolidation_phase(self, cc):
         """Perform consolidation phase.
@@ -500,6 +513,10 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
                         break
                     if self.instance_fits(
                             instance, destination_node, cc):
+                        LOG.info("Consolidation: found fitting "
+                                 "destination (%s) for instance: %s. "
+                                 "Planning migration.",
+                                 destination_node, instance.uuid)
                         self.add_migration(instance, node,
                                            destination_node)
                         break
