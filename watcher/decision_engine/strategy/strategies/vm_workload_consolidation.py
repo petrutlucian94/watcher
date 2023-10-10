@@ -380,8 +380,17 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
         instance_utilization = self.get_instance_utilization(instance)
         metrics = ['cpu', 'ram', 'disk']
         for m in metrics:
-            if (instance_utilization[m] + node_utilization[m] >
-                    node_capacity[m] * cc[m]):
+            fits = (instance_utilization[m] + node_utilization[m] <=
+                    node_capacity[m] * cc[m])
+            # TODO: this should be a debug message (at most)
+            LOG.info(f"Instance fits: {fits}. "
+                     f"Metric: {m}, instance: {instance.name}, "
+                     f"node: {node}, "
+                     f"instance utilization: {instance_utilization[m]}, "
+                     f"node utilization: {node_utilization[m]}, "
+                     f"node capacity: {node_capacity[m]}, "
+                     f"cc: {cc[m]}")
+            if not fits:
                 return False
         return True
 
