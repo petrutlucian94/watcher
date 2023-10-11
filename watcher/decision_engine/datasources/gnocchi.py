@@ -19,6 +19,7 @@
 from datetime import datetime
 from datetime import timedelta
 
+from gnocchiclient import exceptions as gnc_exc
 from oslo_config import cfg
 from oslo_log import log
 
@@ -84,7 +85,9 @@ class GnocchiHelper(base.DataSourceBase):
             kwargs = dict(query={"=": {"original_resource_id": resource_id}},
                           limit=1)
             resources = self.query_retry(
-                f=self.gnocchi.resource.search, **kwargs)
+                f=self.gnocchi.resource.search,
+                ignored_exc=gnc_exc.NotFound,
+                **kwargs)
 
             if not resources:
                 LOG.warning("The {0} resource {1} could not be "
@@ -125,7 +128,9 @@ class GnocchiHelper(base.DataSourceBase):
         kwargs = {k: v for k, v in raw_kwargs.items() if k and v}
 
         statistics = self.query_retry(
-            f=self.gnocchi.metric.get_measures, **kwargs)
+            f=self.gnocchi.metric.get_measures,
+            ignored_exc=gnc_exc.NotFound,
+            **kwargs)
 
         return_value = None
         if statistics:
@@ -161,7 +166,9 @@ class GnocchiHelper(base.DataSourceBase):
             kwargs = dict(query={"=": {"original_resource_id": resource_id}},
                           limit=1)
             resources = self.query_retry(
-                f=self.gnocchi.resource.search, **kwargs)
+                f=self.gnocchi.resource.search,
+                ignored_exc=gnc_exc.NotFound,
+                **kwargs)
 
             if not resources:
                 LOG.warning("The {0} resource {1} could not be "
@@ -181,7 +188,9 @@ class GnocchiHelper(base.DataSourceBase):
         kwargs = {k: v for k, v in raw_kwargs.items() if k and v}
 
         statistics = self.query_retry(
-            f=self.gnocchi.metric.get_measures, **kwargs)
+            f=self.gnocchi.metric.get_measures,
+            ignored_exc=gnc_exc.NotFound,
+            **kwargs)
 
         return_value = None
         if statistics:
