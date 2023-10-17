@@ -19,6 +19,7 @@
 #
 
 from oslo_log import log
+import oslo_utils
 
 from watcher._i18n import _
 from watcher.applier.actions import migration
@@ -67,7 +68,8 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
 
     AGGREGATE = 'mean'
     DATASOURCE_METRICS = ['instance_ram_allocated', 'instance_cpu_usage',
-                          'instance_ram_usage', 'instance_root_disk_size']
+                          'instance_ram_usage', 'instance_root_disk_size',
+                          'host_cpu_usage', 'host_ram_usage']
 
     MIGRATION = "migrate"
     CHANGE_NOVA_SERVICE_STATE = "change_nova_service_state"
@@ -304,7 +306,29 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
             LOG.info(">>> instance utilization: %s %s",
                      instance, instance_util)
 
-        return dict(cpu=node_cpu_util, ram=node_ram_util,
+        total_node_cpu_util = self.datasource_backend.get_host_cpu_usage(
+            node, self.period, self.AGGREGATE,
+            self.granularity) or 0
+        total_node_cpu_util = total_node_cpu_util * node.vcpus / 100
+
+        total_node_ram_util = self.datasource_backend.get_host_ram_usage(
+            node, self.period, self.AGGREGATE,
+            self.granularity) or 0
+        total_node_ram_util /= oslo_utils.units.Ki
+
+        # TODO: convert into debug message
+        LOG.info("node utilization: %s. "
+                 "total instance cpu: %s, "
+                 "total instance ram: %s, "
+                 "total instance disk: %s, "
+                 "total host cpu: %s, "
+                 "total host ram: %s.",
+                 node,
+                 node_cpu_util, node_ram_util, node_disk_util,
+                 total_node_cpu_util, total_node_ram_util)
+
+        return dict(cpu=max(node_cpu_util, total_node_cpu_util),
+                    ram=max(node_ram_util, total_node_ram_util),
                     disk=node_disk_util)
 
     def get_node_capacity(self, node):
