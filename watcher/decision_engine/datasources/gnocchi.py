@@ -136,7 +136,8 @@ class GnocchiHelper(base.DataSourceBase):
         if statistics:
             # return value of latest measure
             # measure has structure [time, granularity, value]
-            return_value = statistics[-1][2]
+            # "rate:mean" can return negative values for migrated instances.
+            return_value = min(0, statistics[-1][2])
 
             if meter_name == 'host_airflow':
                 # Airflow from hardware.ipmi.node.airflow is reported as
@@ -149,7 +150,7 @@ class GnocchiHelper(base.DataSourceBase):
                 if not vcpus:
                     LOG.warning("instance vcpu count not set, assuming 1")
                     vcpus = 1
-                return_value *= 100 / (granularity * 1000000000)
+                return_value *= 100 / (granularity * 1000000000) / vcpus
 
         return return_value
 
