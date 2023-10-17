@@ -266,6 +266,8 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
                 instance.vcpus * (instance_cpu_util / 100.0))
         else:
             total_cpu_utilization = instance.vcpus
+        LOG.info(">>> instance %s cpu util %s %s",
+                 instance, instance_cpu_util, total_cpu_utilization)
 
         if not instance_ram_util:
             instance_ram_util = instance.memory
@@ -299,6 +301,8 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
             node_cpu_util += instance_util['cpu']
             node_ram_util += instance_util['ram']
             node_disk_util += instance_util['disk']
+            LOG.info(">>> instance utilization: %s %s",
+                     instance, instance_util)
 
         return dict(cpu=node_cpu_util, ram=node_ram_util,
                     disk=node_disk_util)
