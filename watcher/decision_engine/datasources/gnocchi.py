@@ -137,7 +137,7 @@ class GnocchiHelper(base.DataSourceBase):
             # return value of latest measure
             # measure has structure [time, granularity, value]
             # "rate:mean" can return negative values for migrated instances.
-            return_value = min(0, statistics[-1][2])
+            return_value = max(0, statistics[-1][2])
 
             if meter_name == 'host_airflow':
                 # Airflow from hardware.ipmi.node.airflow is reported as
