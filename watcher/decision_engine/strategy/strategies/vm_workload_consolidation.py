@@ -18,6 +18,9 @@
 # limitations under the License.
 #
 
+import cProfile, pstats, io
+from pstats import SortKey
+
 import collections
 
 from oslo_log import log
@@ -612,6 +615,10 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
         :param original_model: root_model object
         """
         LOG.info('Executing Smart Strategy')
+
+        pr = cProfile.Profile()
+        pr.enable()
+
         rcu = self.get_relative_cluster_utilization()
 
         cc = {'cpu': 1.0, 'ram': 1.0, 'disk': 1.0}
@@ -640,6 +647,13 @@ class VMWorkloadConsolidation(base.ServerConsolidationBaseStrategy):
         }
 
         LOG.debug(info)
+
+        pr.disable()
+        s = io.StringIO()
+        sortby = SortKey.CUMULATIVE
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        LOG.info("vm workload consolidation profile: %s", s.getvalue())
 
     def post_execute(self):
         self.solution.set_efficacy_indicators(
